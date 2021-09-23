@@ -1,1 +1,6 @@
-[{"title":"Pulp Fiction","genre":"Action"},{"title":"John Wick","genre":"Action"},{"title":"Incredibles","genre":"Animation"}]
+[
+  { "title": "Pulp Fiction", "genre": "Action" },
+  { "title": "John Wick", "genre": "Action" },
+  { "title": "Incredibles", "genre": "Animation" },
+  { "title": "Cinema Paradiso", "genre": "Drama" }
+]

@@ -5,3 +5,4 @@ pub struct Movie {
   pub title: String,
   pub genre: String
 }
+
