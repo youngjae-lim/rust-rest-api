@@ -1,65 +1,73 @@
-use std::fs;
+use postgres::error::Error;
+use postgres::NoTls;
+use postgres::Row;
+use r2d2::{Pool, PooledConnection};
+use r2d2_postgres::PostgresConnectionManager;
+use std::env;
+
 use crate::model::Movie;
 
-static MOVIES_DB: &str = "data/movies.json";
-
-fn _movies() -> Result<Vec<Movie>, serde_json::Error> {
-  let data = fs::read_to_string(MOVIES_DB).expect("Error reading from file");
-  let movies: Result<Vec<Movie>, serde_json::Error> = serde_json::from_str(&data);
-  movies
+pub fn get_database_url() -> String {
+  env::var("PG_URL").expect("PG_URL must be set.")
 }
 
-fn _write_movies(movies: Vec<Movie>) {
-  let data = serde_json::to_string(&movies).expect("Failed to turn movies into serde string");
-  fs::write(MOVIES_DB, data).expect("Failed to write data.");
+pub fn get_pool() -> Pool<PostgresConnectionManager<NoTls>> {
+  let manager = PostgresConnectionManager::new(get_database_url().parse().unwrap(), NoTls);
+  let pool_size: u32 = env::var("PG_POOL_SIZE").expect("PG_POOL_SIZE must be set").parse::<u32>().unwrap();
+  Pool::builder().max_size(pool_size).build(manager).unwrap()
 }
 
-pub fn read_movies() -> Option<Vec<Movie>> {
-  match _movies() {
-    Ok(movies) => Some(movies),
-    Err(_) => None
-  }
+pub fn read_movies(db: &mut PooledConnection<PostgresConnectionManager<NoTls>>) -> Result<Vec<Movie>, Error> {
+  let statement = db
+      .prepare(
+          "select * from movies",
+      )?;
+
+  let movies: Vec<Movie> = db.query(&statement, &[])?
+      .iter()
+      .map(|row| {
+          let title: String = row.get("title");
+          let genre: String = row.get("genre");
+          Movie {
+              title,
+              genre,
+          }
+      }).collect();
+  Ok(movies)
 }
 
-pub fn read_movie(title: String) -> Option<Movie> {
-  match _movies() {
-    Ok(movies) => {
-      let index = movies.iter().position(|m| m.title == title);
+pub fn read_movie(title: String, db: &mut PooledConnection<PostgresConnectionManager<NoTls>>) -> Result<Option<Movie>, Error> {
+  let statement = db
+      .prepare(
+          "select * from movies where title = $1 ",
+      )?;
 
-      match index {
-        Some(x) => Some(movies[x].clone()),
-        None => None
-      }
-    },
-    Err(_) => None
-  }
+  let movie: Option<Movie> = db.query(&statement, &[&title])?
+      .iter()
+      .fold(None, |_acc, row| {
+          let title: String = row.get("title");
+          let genre: String = row.get("genre");
+          Some(Movie {
+              title,
+              genre,
+          })
+      });
+  Ok(movie)
 }
 
-pub fn insert_movie(movie: Movie) -> Option<Movie> {
-  match _movies() {
-    Ok(mut movies) => {
-      movies.push(movie.clone());
-      _write_movies(movies);
-      Some(movie)
-    },
-    Err(_) => None
-  }
+pub fn insert_movie(movie: &Movie, db: &mut PooledConnection<PostgresConnectionManager<NoTls>>) -> Result<Vec<Row>, Error> {
+  let statement = db
+      .prepare(
+          "insert into movies (title, genre) values ($1, $2)",
+      )?;
+
+  db.query(&statement, &[&movie.title, &movie.genre])
 }
 
-pub fn delete_movie(title: String) -> bool {
-  match _movies() {
-    Ok(mut movies) => {
-      let index = movies.iter().position(|m| m.title == title);
-
-      match index {
-        Some(x) => {
-          movies.remove(x);
-          _write_movies(movies);
-          true
-        }
-        None => false
-      }
-    },
-    Err(_) => false
-  }
+pub fn delete_movie(title: String, db: &mut PooledConnection<PostgresConnectionManager<NoTls>>) -> Result<Vec<Row>, Error> {
+  let statement = db
+      .prepare(
+          "delete from movies where title = $1",
+      )?;
+  db.query(&statement, &[&title])
 }

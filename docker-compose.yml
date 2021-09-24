@@ -1,0 +1,58 @@
+version: "3.4"
+services:
+  movies:
+    container_name: "movies"
+    command: cargo watch --workdir . -x 'run --bin rust-rest-api'
+    build:
+      dockerfile: Dockerfile.dev
+      context: .
+      cache_from:
+        - rust:1.55.0
+    links:
+      - postgres
+    depends_on:
+      - postgres
+    environment:
+      - PG_URL=postgres://postgres:docker@postgres:5432/movie?sslmode=disable
+      - PG_POOL_SIZE=10
+
+    networks:
+      - movies-network
+    tty: true
+    volumes:
+      - type: bind
+        source: ./
+        target: /app
+    ports:
+      - "8000:8000"
+
+  # Middleware
+  postgres:
+    image: postgres:12
+    environment:
+      POSTGRES_PASSWORD: "docker"
+    networks:
+      - movies-network
+    ports:
+      - "5432:5432"
+
+  dbmate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbmate
+    command:
+      - /app/create_db.sh
+    environment:
+      DATABASE_URL: "postgres://postgres:docker@postgres:5432/movie?sslmode=disable"
+    depends_on:
+      - postgres
+    links:
+      - postgres
+    networks:
+      - movies-network
+    volumes:
+      - ./db:/app/db
+
+networks:
+  movies-network:
+    driver: bridge
